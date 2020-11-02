@@ -93,10 +93,17 @@ var _ = Context("ClientServices", func() {
 				}
 
 				Expect(serviceBuilder.Update(svc)).To(Succeed())
-				Expect(svc.Spec.Ports).Should(ContainElement(corev1.ServicePort{
-					Name:     "amqps",
-					Protocol: "TCP",
-					Port:     5671,
+				Expect(svc.Spec.Ports).Should(ContainElements([]corev1.ServicePort{
+					{
+						Name:     "amqps",
+						Protocol: "TCP",
+						Port:     5671,
+					},
+					{
+						Name:     "https",
+						Protocol: "TCP",
+						Port:     15671,
+					},
 				}))
 			})
 		})
@@ -295,12 +302,12 @@ var _ = Context("ClientServices", func() {
 					Port:     5672,
 					Protocol: corev1.ProtocolTCP,
 				}
-				managementPort := corev1.ServicePort{
-					Name:     "management",
+				httpPort := corev1.ServicePort{
+					Name:     "http",
 					Port:     15672,
 					Protocol: corev1.ProtocolTCP,
 				}
-				Expect(svc.Spec.Ports).To(ConsistOf(amqpPort, managementPort))
+				Expect(svc.Spec.Ports).To(ConsistOf(amqpPort, httpPort))
 			})
 
 			DescribeTable("plugins exposing ports",
@@ -343,7 +350,7 @@ var _ = Context("ClientServices", func() {
 					{
 						Protocol: corev1.ProtocolTCP,
 						Port:     15672,
-						Name:     "management",
+						Name:     "http",
 						NodePort: 1234,
 					},
 				}
@@ -358,15 +365,15 @@ var _ = Context("ClientServices", func() {
 					Port:     5672,
 					NodePort: 12345,
 				}
-				expectedManagementServicePort := corev1.ServicePort{
+				expectedHTTPServicePort := corev1.ServicePort{
 					Protocol: corev1.ProtocolTCP,
 					Port:     15672,
-					Name:     "management",
+					Name:     "http",
 					NodePort: 1234,
 				}
 
 				Expect(svc.Spec.Ports).To(ContainElement(expectedAmqpServicePort))
-				Expect(svc.Spec.Ports).To(ContainElement(expectedManagementServicePort))
+				Expect(svc.Spec.Ports).To(ContainElement(expectedHTTPServicePort))
 			})
 
 			It("unsets nodePort after updating from NodePort to ClusterIP", func() {
@@ -504,7 +511,7 @@ var _ = Context("ClientServices", func() {
 						Protocol: corev1.ProtocolTCP,
 					},
 					corev1.ServicePort{
-						Name:     "management",
+						Name:     "http",
 						Port:     15672,
 						Protocol: corev1.ProtocolTCP,
 					},

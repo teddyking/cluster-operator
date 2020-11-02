@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"k8s.io/utils/pointer"
 	"log"
 	"net/http"
 	"os"
@@ -28,8 +27,11 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/utils/pointer"
+
 	k8sresource "k8s.io/apimachinery/pkg/api/resource"
 
+	mgmtApi "github.com/michaelklishin/rabbit-hole/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cloudflare/cfssl/csr"
@@ -203,6 +205,28 @@ func publishToQueue(rabbitmqHostName, rabbitmqPort, rabbitmqUsername, rabbitmqPa
 	}
 
 	return nil
+}
+
+func connectHTTPS(username, password, hostname, httpsNodePort, caFilePath string) (err error) {
+	// create TLS config for https request
+	cfg := new(tls.Config)
+	cfg.RootCAs = x509.NewCertPool()
+	ca, err := ioutil.ReadFile(caFilePath)
+	if err != nil {
+		return err
+	}
+
+	cfg.RootCAs.AppendCertsFromPEM(ca)
+
+	transport := &http.Transport{TLSClientConfig: cfg}
+	rmqc, err := mgmtApi.NewTLSClient(fmt.Sprintf("https://%v:%v", hostname, httpsNodePort), username, password, transport)
+	if err != nil {
+		return err
+	}
+
+	_, err = rmqc.Overview()
+
+	return err
 }
 
 func connectAMQPS(username, password, hostname, port, caFilePath string) (conn *amqp.Connection, err error) {

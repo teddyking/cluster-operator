@@ -11,6 +11,7 @@ package system_tests
 
 import (
 	"context"
+
 	"k8s.io/utils/pointer"
 
 	. "github.com/onsi/ginkgo"
@@ -301,6 +302,7 @@ CONSOLE_LOG=new`
 				cluster       *rabbitmqv1beta1.RabbitmqCluster
 				hostname      string
 				amqpsNodePort string
+				httpsNodePort string
 				username      string
 				password      string
 				caFilePath    string
@@ -311,17 +313,16 @@ CONSOLE_LOG=new`
 				Expect(createRabbitmqCluster(ctx, rmqClusterClient, cluster)).To(Succeed())
 				waitForRabbitmqRunning(cluster)
 
-				// Passing a single hostname for certificate creation works because
+				// Passing a single hostname for certificate creation
 				// the AMPQS client is connecting using the same hostname
 				hostname = kubernetesNodeIp(ctx, clientSet)
 				caFilePath = createTLSSecret("rabbitmq-tls-test-secret", namespace, hostname)
 
-				// Update CR with TLS secret name
+				// Update RabbitmqCluster with TLS secret name
 				Expect(updateRabbitmqCluster(ctx, rmqClusterClient, cluster.Name, cluster.Namespace, func(cluster *rabbitmqv1beta1.RabbitmqCluster) {
 					cluster.Spec.TLS.SecretName = "rabbitmq-tls-test-secret"
 				})).To(Succeed())
 				waitForTLSUpdate(cluster)
-				amqpsNodePort = rabbitmqNodePort(ctx, clientSet, cluster, "amqps")
 			})
 
 			AfterEach(func() {
@@ -329,18 +330,34 @@ CONSOLE_LOG=new`
 				Expect(k8sDeleteSecret("rabbitmq-tls-test-secret", namespace)).To(Succeed())
 			})
 
-			It("talks amqps with RabbitMQ", func() {
-				var err error
-				username, password, err = getUsernameAndPassword(ctx, clientSet, "rabbitmq-system", "tls-test-rabbit")
-				Expect(err).NotTo(HaveOccurred())
+			It("RabbitMQ responds to requests over secured protocols", func() {
+				By("talking AMQPS", func() {
+					amqpsNodePort = rabbitmqNodePort(ctx, clientSet, cluster, "amqps")
+					var err error
+					username, password, err = getUsernameAndPassword(ctx, clientSet, "rabbitmq-system", "tls-test-rabbit")
+					Expect(err).NotTo(HaveOccurred())
 
-				// try to publish and consume a message on a amqps url
-				sentMessage := "Hello Rabbitmq!"
-				Expect(publishToQueueAMQPS(sentMessage, username, password, hostname, amqpsNodePort, caFilePath)).To(Succeed())
+					// try to publish and consume a message on a amqps url
+					sentMessage := "Hello Rabbitmq!"
+					Expect(publishToQueueAMQPS(sentMessage, username, password, hostname, amqpsNodePort, caFilePath)).To(Succeed())
 
-				recievedMessage, err := getMessageFromQueueAMQPS(username, password, hostname, amqpsNodePort, caFilePath)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(recievedMessage).To(Equal(sentMessage))
+					recievedMessage, err := getMessageFromQueueAMQPS(username, password, hostname, amqpsNodePort, caFilePath)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(recievedMessage).To(Equal(sentMessage))
+				})
+
+				By("connecting to management API over TLS", func() {
+					var err error
+
+					httpsNodePort = rabbitmqNodePort(ctx, clientSet, cluster, "https")
+
+					username, password, err = getUsernameAndPassword(ctx, clientSet, "rabbitmq-system", "tls-test-rabbit")
+					Expect(err).NotTo(HaveOccurred())
+
+					// try to connect to a management API endpoint over TLS
+					err = connectHTTPS(username, password, hostname, httpsNodePort, caFilePath)
+					Expect(err).NotTo(HaveOccurred())
+				})
 			})
 		})
 
