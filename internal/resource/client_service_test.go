@@ -71,7 +71,7 @@ var _ = Context("ClientServices", func() {
 		})
 
 		Context("TLS", func() {
-			It("opens port 5671 on the service", func() {
+			It("opens ports for amqps and https on the service", func() {
 				instance := &rabbitmqv1beta1.RabbitmqCluster{
 					ObjectMeta: v1.ObjectMeta{
 						Name:      "foo",
@@ -105,6 +105,47 @@ var _ = Context("ClientServices", func() {
 						Port:     15671,
 					},
 				}))
+			})
+
+			When("additional plugins are enabled", func() {
+				It("opens ports for those plugins", func() {
+					instance := &rabbitmqv1beta1.RabbitmqCluster{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "foo",
+							Namespace: "foo-namespace",
+						},
+						Spec: rabbitmqv1beta1.RabbitmqClusterSpec{
+							TLS: rabbitmqv1beta1.TLSSpec{
+								SecretName: "tls-secret",
+							},
+							Rabbitmq: rabbitmqv1beta1.RabbitmqClusterConfigurationSpec{
+								AdditionalPlugins: []rabbitmqv1beta1.Plugin{"rabbitmq_mqtt", "rabbitmq_stomp"},
+							},
+						},
+					}
+					builder.Instance = instance
+					serviceBuilder := builder.ClientService()
+					svc := &corev1.Service{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "foo-service",
+							Namespace: "foo-namespace",
+						},
+					}
+
+					Expect(serviceBuilder.Update(svc)).To(Succeed())
+					Expect(svc.Spec.Ports).Should(ContainElements([]corev1.ServicePort{
+						{
+							Name:     "mqtts",
+							Protocol: "TCP",
+							Port:     8883,
+						},
+						{
+							Name:     "stomps",
+							Protocol: "TCP",
+							Port:     61614,
+						},
+					}))
+				})
 			})
 		})
 
