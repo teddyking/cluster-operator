@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"context"
+	"reflect"
+
 	rabbitmqv1beta1 "github.com/rabbitmq/cluster-operator/api/v1beta1"
 	"github.com/rabbitmq/cluster-operator/internal/resource"
-	"reflect"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func (r *RabbitmqClusterReconciler) setDefaultUserStatus(ctx context.Context, rmq *rabbitmqv1beta1.RabbitmqCluster) error {
@@ -32,6 +34,12 @@ func (r *RabbitmqClusterReconciler) setDefaultUserStatus(ctx context.Context, rm
 		if err := r.Status().Update(ctx, rmq); err != nil {
 			return err
 		}
+	}
+
+	binding := &corev1.LocalObjectReference{Name: secretRef.Name}
+	rmq.Status.Binding = binding
+	if err := r.Status().Update(ctx, rmq); err != nil {
+		return err
 	}
 
 	return nil

@@ -12,6 +12,7 @@ package resource
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -25,6 +26,8 @@ import (
 
 const (
 	DefaultUserSecretName = "default-user"
+	BindingType           = "rabbitmq"
+	BindingProvider       = "rabbitmq-cluster-operator"
 )
 
 type DefaultUserSecretBuilder struct {
@@ -55,6 +58,15 @@ func (builder *DefaultUserSecretBuilder) Build() (runtime.Object, error) {
 		return nil, err
 	}
 
+	port := "5672"
+	scheme := "amqp"
+	host := fmt.Sprintf("%s.%s.svc", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
+	uri := url.URL{
+		Scheme: scheme,
+		User:   url.UserPassword(username, password),
+		Host:   fmt.Sprintf("%s:%s", host, port),
+	}
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      builder.Instance.ChildResourceName(DefaultUserSecretName),
@@ -62,8 +74,14 @@ func (builder *DefaultUserSecretBuilder) Build() (runtime.Object, error) {
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
+			"type":              []byte(BindingType),
+			"provider":          []byte(BindingProvider),
+			"scheme":            []byte(scheme),
+			"host":              []byte(host),
+			"port":              []byte(port),
 			"username":          []byte(username),
 			"password":          []byte(password),
+			"uri":               []byte(uri.String()),
 			"default_user.conf": defaultUserConf,
 		},
 	}, nil
