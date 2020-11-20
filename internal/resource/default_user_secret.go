@@ -11,6 +11,7 @@ package resource
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/url"
 
@@ -20,8 +21,11 @@ import (
 	"github.com/rabbitmq/cluster-operator/internal/metadata"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -31,12 +35,14 @@ const (
 )
 
 type DefaultUserSecretBuilder struct {
+	Client   client.Client
 	Instance *rabbitmqv1beta1.RabbitmqCluster
 	Scheme   *runtime.Scheme
 }
 
 func (builder *RabbitmqResourceBuilder) DefaultUserSecret() *DefaultUserSecretBuilder {
 	return &DefaultUserSecretBuilder{
+		Client:   builder.Client,
 		Instance: builder.Instance,
 		Scheme:   builder.Scheme,
 	}
@@ -60,7 +66,21 @@ func (builder *DefaultUserSecretBuilder) Build() (runtime.Object, error) {
 
 	port := "5672"
 	scheme := "amqp"
+
+	//hacking in some k8s binding spec below
+	serviceName := builder.Instance.ChildResourceName("client")
+
+	service := &corev1.Service{}
+	err = builder.Client.Get(context.Background(), types.NamespacedName{Namespace: builder.Instance.Namespace, Name: serviceName}, service)
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+
 	host := fmt.Sprintf("%s.%s.svc", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
+	if err == nil && len(service.Status.LoadBalancer.Ingress) > 0 {
+		host = service.Status.LoadBalancer.Ingress[0].IP
+	}
+
 	uri := url.URL{
 		Scheme: scheme,
 		User:   url.UserPassword(username, password),
