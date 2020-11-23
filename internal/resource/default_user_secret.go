@@ -12,6 +12,7 @@ package resource
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -21,10 +22,10 @@ import (
 	"github.com/rabbitmq/cluster-operator/internal/metadata"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -68,18 +69,25 @@ func (builder *DefaultUserSecretBuilder) Build() (runtime.Object, error) {
 	scheme := "amqp"
 
 	//hacking in some k8s binding spec below
+	host := fmt.Sprintf("%s.%s.svc", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
+
 	serviceName := builder.Instance.ChildResourceName("client")
 
-	service := &corev1.Service{}
-	err = builder.Client.Get(context.Background(), types.NamespacedName{Namespace: builder.Instance.Namespace, Name: serviceName}, service)
-	if err != nil && !errors.IsNotFound(err) {
-		return nil, err
-	}
+	if builder.Instance.Spec.Service.Type == "LoadBalancer" {
+		service := &corev1.Service{}
+		err = builder.Client.Get(context.Background(), types.NamespacedName{Namespace: builder.Instance.Namespace, Name: serviceName}, service)
+		if err != nil {
+			return nil, err
+		}
 
-	host := fmt.Sprintf("%s.%s.svc", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
-	if err == nil && len(service.Status.LoadBalancer.Ingress) > 0 {
+		if len(service.Status.LoadBalancer.Ingress) < 1 {
+			return nil, errors.New("waiting for loadbalancer")
+		}
+
 		host = service.Status.LoadBalancer.Ingress[0].IP
 	}
+
+	klog.Info("---host is---", host)
 
 	uri := url.URL{
 		Scheme: scheme,
