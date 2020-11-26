@@ -69,7 +69,7 @@ func (builder *DefaultUserSecretBuilder) Build() (runtime.Object, error) {
 	scheme := "amqp"
 
 	//hacking in some k8s binding spec below
-	host := fmt.Sprintf("%s.%s.svc", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
+	host := fmt.Sprintf("%s.%s.svc.cluster.local", builder.Instance.ChildResourceName("client"), builder.Instance.Namespace)
 
 	serviceName := builder.Instance.ChildResourceName("client")
 
